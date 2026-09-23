@@ -1,0 +1,30 @@
+action:
+  name: Payment.CreatePix
+
+runtime:
+  module: ./implementation.so
+
+sandbox:
+  enabled: true
+  scope: action
+
+  filesystem:
+    self:
+      read: true
+      execute: true
+
+    tmp:
+      write: true
+
+  process:
+    spawn: false
+
+  network:
+    allow:
+      - api.bank.com
+
+  memory:
+    max: 64MiB
+
+  cpu:
+    max: 100m

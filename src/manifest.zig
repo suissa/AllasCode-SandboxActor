@@ -10,10 +10,18 @@ pub const ProcessPolicy = struct {
     spawn: bool = false,
 };
 
+pub const NetworkPolicy = struct {
+    /// Number of requested allow-list entries found in the canonical YAML.
+    /// Standalone SandboxActor currently denies all networking unless an
+    /// embedding host provides a network allow-list enforcer.
+    allow_count: usize = 0,
+};
+
 pub const SandboxPolicy = struct {
     enabled: bool = true,
     filesystem: FileSystemPolicy = .{},
     process: ProcessPolicy = .{},
+    network: NetworkPolicy = .{},
     memory_max_bytes: u64,
     cpu_max_millicores: u32,
 };
@@ -53,11 +61,12 @@ pub fn parseCanonicalYaml(allocator: std.mem.Allocator, yaml: []const u8) !Manif
     var self_execute = false;
     var tmp_write = false;
     var spawn = false;
+    var network_allow_count: usize = 0;
     var memory: ?u64 = null;
     var cpu: ?u32 = null;
 
     const Section = enum {
-        none, action, runtime, sandbox, filesystem_self, filesystem_tmp, process, memory, cpu,
+        none, action, runtime, sandbox, filesystem_self, filesystem_tmp, process, network, network_allow, memory, cpu,
     };
     var section: Section = .none;
 
@@ -72,8 +81,15 @@ pub fn parseCanonicalYaml(allocator: std.mem.Allocator, yaml: []const u8) !Manif
         if (std.mem.eql(u8, line, "self:")) { section = .filesystem_self; continue; }
         if (std.mem.eql(u8, line, "tmp:")) { section = .filesystem_tmp; continue; }
         if (std.mem.eql(u8, line, "process:")) { section = .process; continue; }
+        if (std.mem.eql(u8, line, "network:")) { section = .network; continue; }
+        if (std.mem.eql(u8, line, "allow:") and section == .network) { section = .network_allow; continue; }
         if (std.mem.eql(u8, line, "memory:")) { section = .memory; continue; }
         if (std.mem.eql(u8, line, "cpu:")) { section = .cpu; continue; }
+
+        if (section == .network_allow and std.mem.startsWith(u8, line, "- ")) {
+            network_allow_count += 1;
+            continue;
+        }
 
         const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
         const key = std.mem.trim(u8, line[0..colon], " \t");
@@ -106,6 +122,7 @@ pub fn parseCanonicalYaml(allocator: std.mem.Allocator, yaml: []const u8) !Manif
                 .tmp_write = tmp_write,
             },
             .process = .{ .spawn = spawn },
+            .network = .{ .allow_count = network_allow_count },
             .memory_max_bytes = memory orelse return error.InvalidManifest,
             .cpu_max_millicores = cpu orelse return error.InvalidManifest,
         },
@@ -115,4 +132,25 @@ pub fn parseCanonicalYaml(allocator: std.mem.Allocator, yaml: []const u8) !Manif
 test "resource scalar parsers" {
     try std.testing.expectEqual(@as(u64, 64 * 1024 * 1024), try parseSize("64MiB"));
     try std.testing.expectEqual(@as(u32, 100), try parseMillicores("100m"));
+}
+
+test "network allow-list is detected" {
+    const yaml =
+        \\action:
+        \\  name: X
+        \\runtime:
+        \\  module: ./x.so
+        \\sandbox:
+        \\  network:
+        \\    allow:
+        \\      - api.example.com
+        \\  memory:
+        \\    max: 1MiB
+        \\  cpu:
+        \\    max: 10m
+    ;
+    const m = try parseCanonicalYaml(std.testing.allocator, yaml);
+    defer std.testing.allocator.free(m.action_name);
+    defer std.testing.allocator.free(m.module);
+    try std.testing.expectEqual(@as(usize, 1), m.sandbox.network.allow_count);
 }

@@ -1,8 +1,6 @@
 <img width="1586" height="992" alt="file_00000000b1c0820eb1e9ade2739c55f2" src="https://github.com/user-attachments/assets/d99df826-9acc-43f3-b459-8e851b4cadbb" />
 
 
-# AllasCode SandboxActor
-
 Sandboxed Action execution for AllasCode with filesystem, process, network, memory, CPU, and capability isolation.
 
 SandboxActor is a lightweight Linux execution layer for untrusted or semi-trusted Action modules. It is usable by any project while keeping a fast path optimized for Zig dynamic modules.
